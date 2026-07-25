@@ -1,0 +1,27 @@
+"""FastAPI app exposing the FPL agent over HTTP.
+
+POST /chat runs the agent loop (app.agent.ask) for a natural-language
+question and returns its full result -- which tools were called, their
+arguments and results per iteration, the final answer, and iteration count.
+"""
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from app import agent
+
+app = FastAPI(title="FPL Agent")
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    max_iterations: int = Field(5, ge=1, le=10)
+
+
+@app.post("/chat")
+def chat(request: ChatRequest) -> dict:
+    """Answer a natural-language FPL question via the tool-calling agent loop."""
+    try:
+        return agent.ask(request.question, request.max_iterations)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
