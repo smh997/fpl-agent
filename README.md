@@ -4,9 +4,6 @@ A tool-calling agent that answers Fantasy Premier League questions in natural la
 
 **What this demonstrates**: tool/function calling, the agent loop, multi-step planning, and grounded answers (the model answers from live tool data, never from its own training memory).
 
-![Demo](docs/demo.gif)
-*The agent chaining multiple tool calls to answer an FPL question.*
-
 ## Architecture
 
 ```
