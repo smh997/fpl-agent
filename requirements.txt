@@ -4,3 +4,5 @@ httpx
 pytest
 cohere
 python-dotenv
+streamlit
+requests

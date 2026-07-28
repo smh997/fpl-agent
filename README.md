@@ -10,14 +10,27 @@ A tool-calling agent that answers Fantasy Premier League questions in natural la
 ## Architecture
 
 ```
-question → Cohere command-a-03-2025
-         → model returns tool_calls
-         → backend executes tools against the FPL API
-         → results fed back → model calls more tools OR answers
-         → loop until answer (capped at 5 iterations)
+Streamlit frontend
+        |
+        | POST /chat
+        v
+FastAPI backend
+        |
+        v
+Agent loop <-> Cohere command-a-03-2025
+        |
+        | executes tool calls
+        v
+FPL API
 ```
 
-A system preamble instructs the model that it is an FPL data assistant, that it must use the tools for any question about players, teams, fixtures, or gameweeks, and that it must not answer such questions from its own memory. The loop lives in `app/agent.py`'s `ask()`; each round executes whatever tool calls the model requests and feeds the results back until the model either answers or the iteration cap is hit.
+The frontend sends each question to FastAPI and renders the returned answer and
+tool-call trace. A system preamble instructs the model that it is an FPL data
+assistant, that it must use the tools for any question about players, teams,
+fixtures, or gameweeks, and that it must not answer such questions from its own
+memory. The loop lives in `app/agent.py`'s `ask()`; each round executes whatever
+tool calls the model requests against the FPL API and feeds the results back
+until the model either answers or the iteration cap is hit.
 
 ## Tools
 
@@ -54,6 +67,40 @@ uvicorn app.main:app --reload
 Then either:
 - `POST http://localhost:8000/chat` with a JSON body `{"question": "..."}`, or
 - open `http://localhost:8000/docs` for the interactive Swagger UI.
+
+## Frontend
+
+The Streamlit frontend provides a chat UI for the FastAPI `/chat` endpoint. It
+keeps conversation history across Streamlit reruns and places a **How the agent
+reasoned** trace panel beneath each answer. Expanding the panel shows every tool
+call in order, including its iteration, tool name, arguments, result, and the
+overall iteration count.
+
+![Frontend](docs/frontend.png)
+
+Terminal 1 — start the FastAPI backend:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Terminal 2 — start the Streamlit frontend:
+
+```bash
+streamlit run frontend/app.py
+```
+
+The frontend targets `http://localhost:8000` by default. Set the `BACKEND_URL`
+environment variable to override that backend target:
+
+```bash
+# macOS/Linux
+BACKEND_URL=http://localhost:9000 streamlit run frontend/app.py
+
+# Windows PowerShell
+$env:BACKEND_URL="http://localhost:9000"
+streamlit run frontend/app.py
+```
 
 ## Usage
 
@@ -277,5 +324,4 @@ Response:
 ## Future work
 
 - Weight season-long metrics more heavily when `form` data is sparse or zero (e.g. pre-season).
-- A web frontend instead of raw `/chat` JSON.
 - Deployment (containerization, hosting).
