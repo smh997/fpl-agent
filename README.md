@@ -76,7 +76,7 @@ reasoned** trace panel beneath each answer. Expanding the panel shows every tool
 call in order, including its iteration, tool name, arguments, result, and the
 overall iteration count.
 
-![Frontend](docs/frontend.png)
+![Frontend](docs/frontend.gif)
 
 Terminal 1 — start the FastAPI backend:
 
