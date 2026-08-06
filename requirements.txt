@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 httpx
 pytest
-cohere
+google-genai
 python-dotenv
 streamlit
 requests

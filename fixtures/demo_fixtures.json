@@ -1,0 +1,261 @@
+{
+  "what team does erling haaland play for and what's his price?": {
+    "question": "What team does Erling Haaland play for and what's his price?",
+    "tool_calls": [
+      {
+        "name": "find_player",
+        "arguments": {
+          "name": "Erling Haaland"
+        },
+        "result": {
+          "id": 411,
+          "name": "Haaland",
+          "team": "Man City",
+          "team_id": 15,
+          "position": "FWD",
+          "price": 15.5
+        },
+        "iteration": 1
+      }
+    ],
+    "answer": "Erling Haaland plays for Man City and his price in Fantasy Premier League is £15.5m.",
+    "iterations": 2
+  },
+  "compare haaland and saka's points": {
+    "question": "Compare Haaland and Saka's points",
+    "tool_calls": [
+      {
+        "name": "find_player",
+        "arguments": {
+          "name": "Haaland"
+        },
+        "result": {
+          "id": 411,
+          "name": "Haaland",
+          "team": "Man City",
+          "team_id": 15,
+          "position": "FWD",
+          "price": 15.5
+        },
+        "iteration": 1
+      },
+      {
+        "name": "find_player",
+        "arguments": {
+          "name": "Saka"
+        },
+        "result": {
+          "id": 12,
+          "name": "Saka",
+          "team": "Arsenal",
+          "team_id": 1,
+          "position": "MID",
+          "price": 9.5
+        },
+        "iteration": 1
+      },
+      {
+        "name": "get_player_stats",
+        "arguments": {
+          "player_id": 411
+        },
+        "result": {
+          "name": "Haaland",
+          "form": 0.0,
+          "total_points": 239,
+          "goals_scored": 27,
+          "assists": 8,
+          "minutes": 2953,
+          "points_per_game": 6.8
+        },
+        "iteration": 2
+      },
+      {
+        "name": "get_player_stats",
+        "arguments": {
+          "player_id": 12
+        },
+        "result": {
+          "name": "Saka",
+          "form": 0.0,
+          "total_points": 157,
+          "goals_scored": 7,
+          "assists": 10,
+          "minutes": 2218,
+          "points_per_game": 5.1
+        },
+        "iteration": 2
+      }
+    ],
+    "answer": "Here is a comparison of Haaland and Saka's FPL stats:\n\n* **Erling Haaland** (Man City)\n  * **Total Points:** 239\n  * **Points Per Game:** 6.8\n  * **Goals:** 27\n  * **Assists:** 8\n  * **Minutes Played:** 2,953\n\n* **Bukayo Saka** (Arsenal)\n  * **Total Points:** 157\n  * **Points Per Game:** 5.1\n  * **Goals:** 7\n  * **Assists:** 10\n  * **Minutes Played:** 2,218\n\nHaaland leads with 239 total points compared to Saka's 157 points, averaging 6.8 points per game to Saka's 5.1.",
+    "iterations": 3
+  },
+  "show arsenal's next five fixtures": {
+    "question": "Show Arsenal's next five fixtures",
+    "tool_calls": [
+      {
+        "name": "find_player",
+        "arguments": {
+          "name": "Saka"
+        },
+        "result": {
+          "id": 12,
+          "name": "Saka",
+          "team": "Arsenal",
+          "team_id": 1,
+          "position": "MID",
+          "price": 9.5
+        },
+        "iteration": 1
+      },
+      {
+        "name": "get_team_fixtures",
+        "arguments": {
+          "team_id": 1,
+          "next_n": 5
+        },
+        "result": {
+          "team": "Arsenal",
+          "fixtures": [
+            {
+              "opponent": "Coventry City",
+              "venue": "home",
+              "difficulty": 2
+            },
+            {
+              "opponent": "Aston Villa",
+              "venue": "away",
+              "difficulty": 4
+            },
+            {
+              "opponent": "Chelsea",
+              "venue": "home",
+              "difficulty": 4
+            },
+            {
+              "opponent": "Sunderland",
+              "venue": "away",
+              "difficulty": 3
+            },
+            {
+              "opponent": "Brighton",
+              "venue": "away",
+              "difficulty": 3
+            }
+          ]
+        },
+        "iteration": 2
+      }
+    ],
+    "answer": "Here are Arsenal's next five fixtures:\n\n1. **Coventry City** (H) – Difficulty: 2\n2. **Aston Villa** (A) – Difficulty: 4\n3. **Chelsea** (H) – Difficulty: 4\n4. **Sunderland** (A) – Difficulty: 3\n5. **Brighton** (A) – Difficulty: 3",
+    "iterations": 3
+  },
+  "what's the average score for gameweek 1?": {
+    "question": "What's the average score for gameweek 1?",
+    "tool_calls": [
+      {
+        "name": "get_gameweek_summary",
+        "arguments": {
+          "gameweek": 1
+        },
+        "result": {
+          "gameweek": 1,
+          "average_score": 0,
+          "highest_score": null,
+          "most_captained_id": null,
+          "top_element_id": null
+        },
+        "iteration": 1
+      },
+      {
+        "name": "get_gameweek_summary",
+        "arguments": {},
+        "result": {
+          "gameweek": 1,
+          "average_score": 0,
+          "highest_score": null,
+          "most_captained_id": null,
+          "top_element_id": null
+        },
+        "iteration": 2
+      }
+    ],
+    "answer": "According to the FPL data, the average score for Gameweek 1 is 0 points.",
+    "iterations": 3
+  },
+  "is haaland worth captaining?": {
+    "question": "Is Haaland worth captaining?",
+    "tool_calls": [
+      {
+        "name": "find_player",
+        "arguments": {
+          "name": "Haaland"
+        },
+        "result": {
+          "id": 411,
+          "name": "Haaland",
+          "team": "Man City",
+          "team_id": 15,
+          "position": "FWD",
+          "price": 15.5
+        },
+        "iteration": 1
+      },
+      {
+        "name": "get_player_stats",
+        "arguments": {
+          "player_id": 411
+        },
+        "result": {
+          "name": "Haaland",
+          "form": 0.0,
+          "total_points": 239,
+          "goals_scored": 27,
+          "assists": 8,
+          "minutes": 2953,
+          "points_per_game": 6.8
+        },
+        "iteration": 2
+      },
+      {
+        "name": "get_team_fixtures",
+        "arguments": {
+          "team_id": 15
+        },
+        "result": {
+          "team": "Man City",
+          "fixtures": [
+            {
+              "opponent": "Bournemouth",
+              "venue": "home",
+              "difficulty": 3
+            },
+            {
+              "opponent": "Crystal Palace",
+              "venue": "away",
+              "difficulty": 3
+            },
+            {
+              "opponent": "Coventry City",
+              "venue": "home",
+              "difficulty": 2
+            },
+            {
+              "opponent": "Man Utd",
+              "venue": "away",
+              "difficulty": 4
+            },
+            {
+              "opponent": "Sunderland",
+              "venue": "home",
+              "difficulty": 2
+            }
+          ]
+        },
+        "iteration": 2
+      }
+    ],
+    "answer": "Yes, Haaland is worth captaining. Despite a recent form score of 0.0, he remains one of the top assets in the game with 239 total points (6.8 points per game, 27 goals) and has a promising home fixture next against Bournemouth (difficulty 3).",
+    "iterations": 3
+  }
+}

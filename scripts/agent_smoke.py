@@ -1,7 +1,7 @@
 """Smoke test: single-tool-call questions, as a regression check on `ask`.
 
 Run from the repo root (after copying .env.example to .env and filling in
-COHERE_API_KEY):
+GEMINI_API_KEY):
 
     python scripts/agent_smoke.py
 

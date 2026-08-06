@@ -10,7 +10,7 @@ import streamlit as st
 
 st.set_page_config(page_title="FPL Agent", page_icon="⚽", layout="centered")
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 CHAT_ENDPOINT = f"{BACKEND_URL}/chat"
 REQUEST_TIMEOUT = (5, 120)
 
@@ -55,6 +55,8 @@ def render_assistant_message(message: dict[str, Any]) -> None:
     if message.get("is_error"):
         st.error(message["content"])
     else:
+        if message.get("demo_mode"):
+            st.caption("🔄 cached demo response")
         st.markdown(message["content"])
         render_trace(
             message.get("tool_calls", []),
@@ -154,6 +156,7 @@ if question := st.chat_input("Ask about players, form, fixtures, or gameweeks"):
                         "content": str(answer),
                         "tool_calls": response_data.get("tool_calls", []),
                         "iterations": response_data.get("iterations"),
+                        "demo_mode": response_data.get("demo_mode", False),
                         "is_error": False,
                     }
                 else:

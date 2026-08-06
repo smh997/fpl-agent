@@ -1,7 +1,7 @@
 """Smoke test: Stage 3's multi-tool agent loop (chaining across iterations).
 
 Run from the repo root (after copying .env.example to .env and filling in
-COHERE_API_KEY):
+GEMINI_API_KEY):
 
     python scripts/loop_smoke.py
 
