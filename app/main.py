@@ -20,6 +20,12 @@ class ChatRequest(BaseModel):
     max_iterations: int = Field(5, ge=1, le=10)
 
 
+@app.get("/health")
+def health() -> dict:
+    """Plain liveness check -- no LLM or tool calls, just confirms the process is up."""
+    return {"status": "ok"}
+
+
 @app.post("/chat")
 def chat(request: ChatRequest) -> dict:
     """Answer a natural-language FPL question via the tool-calling agent loop."""
