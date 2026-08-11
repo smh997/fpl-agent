@@ -4,6 +4,13 @@ A tool-calling agent that answers Fantasy Premier League questions in natural la
 
 **What this demonstrates**: tool/function calling, the agent loop, multi-step planning, and grounded answers (the model answers from live tool data, never from its own training memory).
 
+## Live demo
+
+- Frontend (Streamlit): https://fpl-agent997.streamlit.app
+- Backend API (Swagger): https://fpl-agent-api-eu1f.onrender.com/docs
+
+Both run on free tiers that sleep when idle, so the first request after a period of inactivity can take up to ~50s to wake (cold start) -- this is expected, not a bug.
+
 ## Architecture
 
 ```
@@ -14,7 +21,7 @@ Streamlit frontend
 FastAPI backend
         |
         v
-Agent loop <-> Cohere command-a-03-2025
+Agent loop <-> Google Gemini (gemini-3.6-flash, tool calling)
         |
         | executes tool calls
         v
@@ -29,6 +36,13 @@ memory. The loop lives in `app/agent.py`'s `ask()`; each round executes whatever
 tool calls the model requests against the FPL API and feeds the results back
 until the model either answers or the iteration cap is hit.
 
+### Resilience
+
+The Gemini free tier caps at ~20 requests/day. To keep the live demo usable rather than failing outright once that's exhausted:
+
+- **Rate-limit retry.** `_create_interaction` in `app/agent.py` retries a 429 up to 3 times with bounded exponential backoff -- parsing Google's suggested retry delay when the response provides one, capped at 10s per attempt so a single sleep never blocks a request too long.
+- **Fixture fallback.** If the live call still fails (quota exhausted, missing/invalid key, or a connection error), `ask_with_fallback` serves a cached real trace from `fixtures/demo_fixtures.json` for a small set of demo questions, flagged with `demo_mode: true` in the response so the frontend can show a "cached demo response" banner. If the question isn't in the fixtures, it returns a clean error instead of crashing the endpoint.
+
 ## Tools
 
 | Tool | Input | Returns |
@@ -42,7 +56,7 @@ There's deliberately no `compare_players` tool — comparison is reasoning the a
 
 ## Tech stack
 
-FastAPI, Cohere (`command-a-03-2025`, tool calling), httpx, pytest.
+FastAPI, Google Gemini (`google-genai` SDK, tool calling), Streamlit, httpx, pytest. Backend deployed on Render; frontend deployed on Streamlit Community Cloud.
 
 ## Quickstart
 
@@ -56,13 +70,14 @@ python -m venv .venv
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env and set COHERE_API_KEY (free key at https://dashboard.cohere.com)
+# edit .env and set GEMINI_API_KEY (free key at https://aistudio.google.com/apikey)
 
 uvicorn app.main:app --reload
 ```
 
 Then either:
-- `POST http://localhost:8000/chat` with a JSON body `{"question": "..."}`, or
+- `POST http://localhost:8000/chat` with a JSON body `{"question": "..."}`,
+- `GET http://localhost:8000/health` for a plain liveness check (no LLM or tool calls), or
 - open `http://localhost:8000/docs` for the interactive Swagger UI.
 
 ## Frontend
@@ -71,7 +86,8 @@ The Streamlit frontend provides a chat UI for the FastAPI `/chat` endpoint. It
 keeps conversation history across Streamlit reruns and places a **How the agent
 reasoned** trace panel beneath each answer. Expanding the panel shows every tool
 call in order, including its iteration, tool name, arguments, result, and the
-overall iteration count.
+overall iteration count. It's deployed on Streamlit Community Cloud at the link
+in [Live demo](#live-demo) above.
 
 ![Frontend](docs/frontend.gif)
 
@@ -87,8 +103,10 @@ Terminal 2 — start the Streamlit frontend:
 streamlit run frontend/app.py
 ```
 
-The frontend targets `http://localhost:8000` by default. Set the `BACKEND_URL`
-environment variable to override that backend target:
+The frontend resolves its backend target in this order: `st.secrets["BACKEND_URL"]`
+(how Streamlit Community Cloud injects it in deployment), then the `BACKEND_URL`
+environment variable, then `http://127.0.0.1:8000` for local dev. To override
+locally without secrets:
 
 ```bash
 # macOS/Linux
@@ -132,7 +150,8 @@ Response:
     }
   ],
   "answer": "Haaland is a forward for Man City and costs £15.5.",
-  "iterations": 2
+  "iterations": 2,
+  "demo_mode": false
 }
 ```
 
@@ -212,7 +231,8 @@ Response:
     }
   ],
   "answer": "Haaland has 239 points and Saka has 157 points.",
-  "iterations": 3
+  "iterations": 3,
+  "demo_mode": false
 }
 ```
 
@@ -298,9 +318,12 @@ Response:
     }
   ],
   "answer": "Haaland has scored 27 goals and assisted 8 times this season, with a points per game of 6.8. However, his form is 0. His next fixtures are against Bournemouth (home), Crystal Palace (away), Coventry City (home), Man Utd (away), and Sunderland (home), with difficulty ratings of 3, 3, 2, 4, and 2 respectively.\n\nBased on his form, Haaland is not worth captaining.",
-  "iterations": 3
+  "iterations": 3,
+  "demo_mode": false
 }
 ```
+
+All three responses above are live, so `demo_mode` is `false`; it flips to `true` only when a live call fails and `ask_with_fallback` serves a cached fixture instead (see [Resilience](#resilience)).
 
 ## Engineering notes
 
@@ -310,7 +333,7 @@ Response:
 
 **Fuzzy name matching needed a real threshold.** A naive "closest match wins" approach using `SequenceMatcher` ratios scored "Salah" against "Saliba" at 0.73 — high enough to confidently return the wrong player instead of admitting no good match existed. Fixed with a substring-match fast path plus a stricter ratio floor for the pure-fuzzy fallback, so coincidental character overlap can no longer masquerade as a real match.
 
-**Cohere's v2 chat API rejected a tool result's own `id` field.** Tool results are round-tripped back to the model as JSON text, and the API auto-parses that JSON, treating a top-level `id` key as a document id that must be a string. `find_player`'s result legitimately has an integer `id` (the player id), which collided and got rejected. Fixed by wrapping every tool result as `{"result": {...}}` before serializing it into the tool message, so none of the tools' own field names are ever read as protocol-level fields.
+**Migrated from Cohere to Google Gemini.** Swapped providers to move onto a non-expiring free tier. The migration surfaced a grounding regression: Gemini answered "What is the capital of France?" from its own training data instead of declining, because the system preamble only forced tool use for FPL topics and never forbade answering *non*-FPL questions from memory. Fixed by adding an explicit scope-refusal clause to the preamble -- the assistant now declines anything outside FPL players/teams/fixtures/gameweeks, including general knowledge it could otherwise answer confidently.
 
 ## Known limitations
 
@@ -321,4 +344,3 @@ Response:
 ## Future work
 
 - Weight season-long metrics more heavily when `form` data is sparse or zero (e.g. pre-season).
-- Deployment (containerization, hosting).
