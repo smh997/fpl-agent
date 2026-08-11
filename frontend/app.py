@@ -10,9 +10,23 @@ import streamlit as st
 
 st.set_page_config(page_title="FPL Agent", page_icon="⚽", layout="centered")
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+
+def _resolve_backend_url() -> str:
+    """Resolve the backend URL: Streamlit Cloud secrets, then env var, then local default."""
+    try:
+        if "BACKEND_URL" in st.secrets:
+            return st.secrets["BACKEND_URL"]
+    except Exception:
+        pass  # no secrets.toml locally -- st.secrets can raise just for being accessed
+    return os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+
+
+BACKEND_URL = _resolve_backend_url().rstrip("/")
 CHAT_ENDPOINT = f"{BACKEND_URL}/chat"
-REQUEST_TIMEOUT = (5, 120)
+# Generous timeout: Render's free tier sleeps after 15 min idle and can take
+# up to ~50s to wake, so the first request after a period of inactivity is
+# slow by design, not broken.
+REQUEST_TIMEOUT = 90
 
 
 def format_json(value: Any) -> str:
@@ -89,12 +103,13 @@ def ask_backend(question: str) -> dict[str, Any]:
         )
     except requests.ConnectionError as exc:
         raise RuntimeError(
-            "I couldn't reach the FPL agent. Make sure the FastAPI backend "
-            f"is running at {BACKEND_URL}."
+            "I couldn't reach the FPL agent. Make sure the backend is "
+            f"running at {BACKEND_URL}."
         ) from exc
     except requests.Timeout as exc:
         raise RuntimeError(
-            "The FPL agent took too long to respond. Please try again."
+            "The FPL agent took too long to respond, even after waiting for "
+            "a possible cold start. Please try again."
         ) from exc
     except requests.RequestException as exc:
         raise RuntimeError(
@@ -144,7 +159,10 @@ if question := st.chat_input("Ask about players, form, fixtures, or gameweeks"):
         st.markdown(question)
 
     with st.chat_message("assistant"):
-        with st.spinner("The agent is checking the latest FPL data..."):
+        with st.spinner(
+            "Waking up the backend — the first request can take up to a "
+            "minute on the free tier..."
+        ):
             try:
                 response_data = ask_backend(question)
                 answer = response_data.get("answer")
