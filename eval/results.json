@@ -1,0 +1,94 @@
+{
+  "timestamp": "2026-08-14T02:34:43.993437+00:00",
+  "incomplete": false,
+  "completed": 3,
+  "total": 3,
+  "cases": [
+    {
+      "id": "single_tool_lookup",
+      "check_type": "tool_selection",
+      "question": "What team does Haaland play for?",
+      "passed": true,
+      "reason": null,
+      "tool_calls": [
+        {
+          "name": "find_player",
+          "arguments": {
+            "name": "Haaland"
+          },
+          "result": {
+            "id": 411,
+            "name": "Haaland",
+            "team": "Man City",
+            "team_id": 15,
+            "position": "FWD",
+            "price": 15.5
+          },
+          "iteration": 1
+        }
+      ],
+      "answer": "Erling Haaland plays for Man City."
+    },
+    {
+      "id": "who_is_grounding",
+      "check_type": "groundedness",
+      "question": "Who is Haaland?",
+      "passed": true,
+      "reason": null,
+      "tool_calls": [
+        {
+          "name": "find_player",
+          "arguments": {
+            "name": "Haaland"
+          },
+          "result": {
+            "id": 411,
+            "name": "Haaland",
+            "team": "Man City",
+            "team_id": 15,
+            "position": "FWD",
+            "price": 15.5
+          },
+          "iteration": 1
+        },
+        {
+          "name": "get_player_stats",
+          "arguments": {
+            "player_id": 411
+          },
+          "result": {
+            "name": "Haaland",
+            "form": 0.0,
+            "total_points": 239,
+            "goals_scored": 27,
+            "assists": 8,
+            "minutes": 2953,
+            "points_per_game": 6.8
+          },
+          "iteration": 2
+        }
+      ],
+      "answer": "Erling Haaland is a Forward (FWD) for Manchester City in Fantasy Premier League.\n\n**FPL Overview:**\n* **Price:** £15.5m\n* **Total Points:** 239\n* **Points Per Game:** 6.8\n* **Goals Scored:** 27\n* **Assists:** 8\n* **Minutes Played:** 2,953\n* **Form:** 0.0"
+    },
+    {
+      "id": "refuse_salah_not_found",
+      "check_type": "refusal",
+      "question": "Is Salah worth captaining?",
+      "passed": true,
+      "reason": null,
+      "tool_calls": [
+        {
+          "name": "find_player",
+          "arguments": {
+            "name": "Salah"
+          },
+          "result": {
+            "error": "no player found"
+          },
+          "iteration": 1
+        }
+      ],
+      "answer": "I couldn't find a player named \"Salah\" in the FPL database."
+    }
+  ]
+}
