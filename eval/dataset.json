@@ -1,0 +1,32 @@
+[
+  {
+    "id": "single_tool_lookup",
+    "question": "What team does Haaland play for?",
+    "check_type": "tool_selection",
+    "expected_tools": ["find_player"],
+    "order_sensitive": true,
+    "must_be_grounded": true,
+    "must_refuse": false,
+    "notes": "Baseline single-tool lookup; confirms the simplest case works before testing chains."
+  },
+  {
+    "id": "who_is_grounding",
+    "question": "Who is Haaland?",
+    "check_type": "groundedness",
+    "expected_tools": [],
+    "order_sensitive": false,
+    "must_be_grounded": true,
+    "must_refuse": false,
+    "notes": "Regression case for the original grounding bug: an open-ended 'who is' question must not be answered from training-data memory -- tool_calls must be non-empty and the answer must be present."
+  },
+  {
+    "id": "refuse_salah_not_found",
+    "question": "Is Salah worth captaining?",
+    "check_type": "refusal",
+    "expected_tools": [],
+    "order_sensitive": false,
+    "must_be_grounded": false,
+    "must_refuse": true,
+    "notes": "KNOWN FAILING CASE, reserved as a regression target (see README 'Known limitations' and project2-status.md 'Known issues'). find_player has no 'Salah' in this dataset; the agent currently guesses name variations (Mohamed, Mo, Darwin, ...) and can return an unrelated real player instead of declining. Expected to FAIL until the find_player not-found path is fixed -- a failure here is not a harness bug."
+  }
+]

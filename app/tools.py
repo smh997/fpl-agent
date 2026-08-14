@@ -13,6 +13,7 @@ from app import fpl_client
 
 _MATCH_ACCEPT_THRESHOLD = 0.5
 _TYPO_RATIO_THRESHOLD = 0.78
+_MIN_SUBSTRING_QUERY_LENGTH = 3
 
 
 def _match_score(query: str, candidate: str) -> float:
@@ -20,15 +21,18 @@ def _match_score(query: str, candidate: str) -> float:
 
     Exact matches score 1.0. A query that's a substring of the candidate (or
     vice versa -- e.g. "salah" in "mohamed salah") scores highly, favoring
-    fuller coverage of the shorter string. Anything else falls back to a
-    typo-tolerant SequenceMatcher ratio, discounted so that coincidental
-    similarity (e.g. "salah" vs "saliba") can't outscore a real substring
-    match or masquerade as a confident one.
+    fuller coverage of the shorter string -- but only once the query is at
+    least _MIN_SUBSTRING_QUERY_LENGTH characters, since a 1-2 character
+    fragment (e.g. "mo") is a near-universal substring of *something* and
+    would otherwise confidently "match" almost any name. Anything else falls
+    back to a typo-tolerant SequenceMatcher ratio, discounted so that
+    coincidental similarity (e.g. "salah" vs "saliba") can't outscore a real
+    substring match or masquerade as a confident one.
     """
     query, candidate = query.lower(), candidate.lower()
     if query == candidate:
         return 1.0
-    if query in candidate or candidate in query:
+    if len(query) >= _MIN_SUBSTRING_QUERY_LENGTH and (query in candidate or candidate in query):
         shorter, longer = sorted((len(query), len(candidate)))
         return 0.8 + 0.2 * (shorter / longer)
     ratio = SequenceMatcher(None, query, candidate).ratio()

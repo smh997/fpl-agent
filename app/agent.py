@@ -58,6 +58,14 @@ SYSTEM_PREAMBLE = (
     "unrelated information. Keep answers short and stick to what the tool "
     "results actually say -- no padding, no speculation, no biographical "
     "detail the tools didn't return.\n\n"
+    "If find_player returns {\"error\": \"no player found\"} (or any "
+    "not-found result) for a player name, stop searching for that player "
+    "immediately. Do not retry find_player with alternate spellings, "
+    "nicknames, shortened names, or other guessed variations of the name. "
+    "Make exactly one find_player attempt per player name the user actually "
+    "mentioned; if that attempt doesn't find them, tell the user you "
+    "couldn't find that player and move on -- do not guess who they might "
+    "be.\n\n"
     "When the question asks for a judgment -- 'is X worth captaining?', "
     "'should I pick A or B?', 'is X worth it?' -- commit to a clear "
     "recommendation. Don't just lay out the data and leave the decision to "
@@ -114,20 +122,25 @@ def _parse_retry_delay(error: RateLimitError) -> float | None:
     return float(match.group(1)) if match else None
 
 
-def _create_interaction(client: genai.Client, **kwargs):
+def _create_interaction(client: genai.Client, *, max_retries: int = _MAX_RETRIES, **kwargs):
     """Call client.interactions.create, retrying on 429s with bounded backoff.
 
-    Up to _MAX_RETRIES retries (4 attempts total). Each delay is either the
-    server-suggested retry delay (if Gemini reports one) or an exponential
-    backoff with jitter, capped at _MAX_BACKOFF_SECONDS so a single sleep
-    never blocks the request longer than that -- a long reported delay is
-    better handled by failing over to a demo fixture than by blocking here.
+    Up to max_retries retries (max_retries + 1 attempts total). Each delay is
+    either the server-suggested retry delay (if Gemini reports one) or an
+    exponential backoff with jitter, capped at _MAX_BACKOFF_SECONDS so a
+    single sleep never blocks the request longer than that -- a long
+    reported delay is better handled by failing over to a demo fixture than
+    by blocking here.
+
+    Pass max_retries=0 for a single attempt with no retries -- e.g. an eval
+    run against a tightly-capped daily quota, where retrying into an
+    already-exhausted cap only burns requests that can't succeed anyway.
     """
-    for attempt in range(_MAX_RETRIES + 1):
+    for attempt in range(max_retries + 1):
         try:
             return client.interactions.create(**kwargs)
         except RateLimitError as error:
-            if attempt == _MAX_RETRIES:
+            if attempt == max_retries:
                 raise
             delay = _parse_retry_delay(error)
             if delay is None:
@@ -135,7 +148,7 @@ def _create_interaction(client: genai.Client, **kwargs):
             time.sleep(min(delay, _MAX_BACKOFF_SECONDS))
 
 
-def ask(question: str, max_iterations: int = 5) -> dict:
+def ask(question: str, max_iterations: int = 5, max_retries: int = _MAX_RETRIES) -> dict:
     """Answer a question, letting the model call tools across multiple rounds.
 
     Each round: the model may request one or more tool calls, which are
@@ -150,6 +163,10 @@ def ask(question: str, max_iterations: int = 5) -> dict:
         question: A natural-language question about FPL data.
         max_iterations: Maximum number of tool-calling rounds before giving
             up rather than looping forever.
+        max_retries: Retries per LLM call on a 429 before raising, passed
+            through to `_create_interaction`. Defaults to the same bounded
+            backoff `/chat` and `ask_with_fallback` rely on; pass 0 to fail
+            fast on the first rate limit instead (e.g. for eval runs).
 
     Returns:
         {question, tool_calls: [{name, arguments, result, iteration}, ...],
@@ -166,6 +183,7 @@ def ask(question: str, max_iterations: int = 5) -> dict:
     for iteration in range(1, max_iterations + 1):
         interaction = _create_interaction(
             client,
+            max_retries=max_retries,
             model=MODEL,
             system_instruction=SYSTEM_PREAMBLE,
             input=history,
