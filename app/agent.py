@@ -13,6 +13,7 @@ retain conversation state server-side, the full step history is resent as
 function_result step per executed tool) is appended before the next call.
 """
 
+import asyncio
 import json
 import os
 import random
@@ -20,6 +21,7 @@ import re
 import time
 from pathlib import Path
 
+import httpx2
 from google import genai
 from google.genai._gaos.lib.compat_errors import (
     APIConnectionError,
@@ -27,9 +29,11 @@ from google.genai._gaos.lib.compat_errors import (
     RateLimitError,
 )
 from dotenv import load_dotenv
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
 
 from app import tools
-from app.config import MODEL
+from app.config import MCP_SERVER_URL, MODEL
 from app.schemas import TOOL_SCHEMAS
 
 load_dotenv()
@@ -148,7 +152,84 @@ def _create_interaction(client: genai.Client, *, max_retries: int = _MAX_RETRIES
             time.sleep(min(delay, _MAX_BACKOFF_SECONDS))
 
 
-def ask(question: str, max_iterations: int = 5, max_retries: int = _MAX_RETRIES) -> dict:
+async def _call_tool_via_mcp(name: str, arguments: dict) -> dict:
+    """Call one tool on the standalone MCP server (mcp_server/server.py) over
+    Streamable HTTP and return its result as a plain dict.
+
+    Connects fresh for this single call rather than reusing a session across
+    a whole `ask()` invocation -- see the module docstring's design notes.
+    The tool's return value comes back JSON-encoded in the first text content
+    block (confirmed empirically: structured_content is not populated for
+    these tools despite their dict return annotations), so it's decoded with
+    json.loads rather than read from structured_content.
+    """
+    async with streamable_http_client(MCP_SERVER_URL) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            call_result = await session.call_tool(name, arguments)
+            if call_result.is_error:
+                raise RuntimeError(
+                    f"MCP tool {name!r} returned an error: {call_result.content}"
+                )
+            return json.loads(call_result.content[0].text)
+
+
+def _unwrap_transport_error(error: BaseException) -> httpx2.TransportError | None:
+    """Find an httpx2.TransportError inside a (possibly nested) ExceptionGroup.
+
+    anyio's TaskGroup wraps connection failures in an ExceptionGroup rather
+    than letting them propagate directly -- confirmed empirically against an
+    unreachable MCP server. Returns the underlying transport error if one is
+    found anywhere in the group, else None. None means "this isn't a
+    connectivity failure" -- callers re-raise the original error as-is
+    rather than mislabeling an unrelated bug as "server unreachable".
+    """
+    if isinstance(error, httpx2.TransportError):
+        return error
+    if isinstance(error, ExceptionGroup):
+        for sub_error in error.exceptions:
+            found = _unwrap_transport_error(sub_error)
+            if found is not None:
+                return found
+    return None
+
+
+def _execute_tool(name: str, arguments: dict, use_mcp: bool):
+    """Execute one tool call, either directly (default) or via the MCP server.
+
+    The direct path (use_mcp=False, the default) is exactly today's
+    behavior: a plain registry lookup and call -- unchanged for /chat,
+    ask_with_fallback, the eval harness, and every existing test. The MCP
+    path (use_mcp=True) round-trips the same name/arguments through
+    mcp_server/server.py instead.
+
+    Only connectivity failures (an unreachable MCP server) are translated
+    into a clear RuntimeError here -- there's no fixture fallback for this
+    path, so that's meant to fail loudly, not degrade gracefully. Anything
+    else -- a bug in _call_tool_via_mcp, a malformed response, an is_error
+    result -- propagates as itself rather than being swallowed under a
+    misleading "server unreachable" message.
+    """
+    if not use_mcp:
+        return _TOOL_REGISTRY[name](**arguments)
+
+    try:
+        return asyncio.run(_call_tool_via_mcp(name, arguments))
+    except (httpx2.TransportError, ExceptionGroup) as error:
+        transport_error = _unwrap_transport_error(error)
+        if transport_error is None:
+            raise
+        raise RuntimeError(
+            f"MCP server unreachable at {MCP_SERVER_URL}: {transport_error}"
+        ) from transport_error
+
+
+def ask(
+    question: str,
+    max_iterations: int = 5,
+    max_retries: int = _MAX_RETRIES,
+    use_mcp: bool = False,
+) -> dict:
     """Answer a question, letting the model call tools across multiple rounds.
 
     Each round: the model may request one or more tool calls, which are
@@ -167,6 +248,11 @@ def ask(question: str, max_iterations: int = 5, max_retries: int = _MAX_RETRIES)
             through to `_create_interaction`. Defaults to the same bounded
             backoff `/chat` and `ask_with_fallback` rely on; pass 0 to fail
             fast on the first rate limit instead (e.g. for eval runs).
+        use_mcp: If True, execute tool calls via the standalone MCP server
+            (mcp_server/server.py, see MCP_SERVER_URL in app/config.py)
+            instead of calling app/tools.py directly. Defaults to False --
+            every existing caller (/chat, ask_with_fallback, the eval
+            harness) is on the direct path and unaffected by this option.
 
     Returns:
         {question, tool_calls: [{name, arguments, result, iteration}, ...],
@@ -205,7 +291,7 @@ def ask(question: str, max_iterations: int = 5, max_retries: int = _MAX_RETRIES)
             }
 
         for step in function_calls:
-            result = _TOOL_REGISTRY[step.name](**step.arguments)
+            result = _execute_tool(step.name, step.arguments, use_mcp)
             all_tool_calls.append(
                 {
                     "name": step.name,
