@@ -56,7 +56,7 @@ There's deliberately no `compare_players` tool — comparison is reasoning the a
 
 ## Tech stack
 
-FastAPI, Google Gemini (`google-genai` SDK, tool calling), Streamlit, httpx, pytest. Backend deployed on Render; frontend deployed on Streamlit Community Cloud.
+FastAPI, Google Gemini (`google-genai` SDK, tool calling), Streamlit, httpx, pytest, MCP (`mcp` Python SDK) for exposing tools over the Model Context Protocol. Backend deployed on Render; frontend deployed on Streamlit Community Cloud.
 
 ## Quickstart
 
@@ -116,6 +116,51 @@ BACKEND_URL=http://localhost:9000 streamlit run frontend/app.py
 $env:BACKEND_URL="http://localhost:9000"
 streamlit run frontend/app.py
 ```
+
+## MCP integration
+
+Alongside the direct FastAPI/Gemini path, this project exposes the same FPL
+tools over the [Model Context Protocol](https://modelcontextprotocol.io) and
+can optionally consume them that way itself.
+
+`mcp_server/server.py` is a standalone MCP server, built on the official
+`mcp` Python SDK (v2), that exposes `find_player`, `get_player_stats`,
+`get_team_fixtures`, and `get_gameweek_summary` as MCP tools over Streamable
+HTTP. Each MCP tool is a thin wrapper that delegates straight into the same
+`app/tools.py` functions the agent calls directly -- no duplicated logic, no
+divergent fuzzy-matching or data shapes between the two paths.
+
+The agent can consume its own MCP server as a client: `ask(question,
+use_mcp=True)` routes tool execution through the MCP server over the
+protocol instead of calling `app/tools.py` directly, producing an identical
+tool-call trace (the same `{name, arguments, result, iteration}` shape) to
+the direct path. This is an opt-in flag, not the default -- `ask()`,
+`ask_with_fallback()`, `/chat`, and the eval harness are all unaffected and
+stay on direct calls unless `use_mcp=True` is explicitly passed.
+
+**The deployed demo intentionally stays on the direct-call path.** This is a
+deliberate architecture decision, not a limitation: routing the live demo's
+tool execution through a second networked service would make it depend on
+that service staying up, for no benefit the demo actually needs. The MCP
+path exists to demonstrate the integration works end-to-end, not to replace
+the simpler, more reliable direct path in production.
+
+**Run / verify it:**
+
+```bash
+# Start the server (binds 127.0.0.1:8001/mcp by default)
+python mcp_server/server.py
+
+# Inspect it (requires Node.js)
+npx @modelcontextprotocol/inspector
+# In the Inspector UI: transport = Streamable HTTP, URL = http://127.0.0.1:8001/mcp
+
+# With the server running, route the agent's tool calls through it
+python -c "from app.agent import ask; print(ask('Who is Haaland?', use_mcp=True))"
+```
+
+`MCP_SERVER_URL` (in `app/config.py`) is configurable via env var, defaulting
+to `http://127.0.0.1:8001/mcp`.
 
 ## Usage
 
@@ -335,6 +380,52 @@ All three responses above are live, so `demo_mode` is `false`; it flips to `true
 
 **Migrated from Cohere to Google Gemini.** Swapped providers to move onto a non-expiring free tier. The migration surfaced a grounding regression: Gemini answered "What is the capital of France?" from its own training data instead of declining, because the system preamble only forced tool use for FPL topics and never forbade answering *non*-FPL questions from memory. Fixed by adding an explicit scope-refusal clause to the preamble -- the assistant now declines anything outside FPL players/teams/fixtures/gameweeks, including general knowledge it could otherwise answer confidently.
 
+## Evaluation
+
+`eval/` is a small behavior-scoring harness for the agent, separate from the
+unit/HTTP tests in `tests/`. It scores three kinds of behavior:
+
+- **Tool selection** -- did the right tools fire, in the right order (or as
+  the right set, for order-insensitive cases)?
+- **Groundedness** -- did the answer actually come from tool results, not
+  the model's own memory?
+- **Refusal** -- does the agent decline cleanly when a player isn't found,
+  or when a question is out of scope, rather than guessing or answering
+  anyway?
+
+`eval/run_eval.py` loads cases from `eval/dataset.json`, runs each one
+against the live agent via `ask()` directly (not `ask_with_fallback` --
+a quota failure should fail loudly here, not silently serve a cached
+fixture and corrupt the score), scores the result, and writes a timestamped
+run to `eval/results.json` so runs are comparable over time.
+
+**The harness caught a real bug and proved its fix.** The refusal case "Is
+Salah worth captaining?" originally failed: when `find_player("Salah")`
+returned no match, the agent guessed alternate name fragments ("Mohamed",
+"Mo", ...) and confidently returned the wrong real players (e.g. Monga,
+Belloumi) instead of declining. Fixed at two layers:
+- A system preamble clause telling the agent to stop and decline
+  immediately on a not-found result, rather than retrying with guessed
+  variations.
+- A minimum-length floor on `find_player`'s substring fast-path, so a
+  short fragment like "Mo" can no longer confidently match an unrelated
+  player's name.
+
+Score went from 2/3 to 3/3 after the fix, with the before/after runs both
+committed (`eval/results.json`) as a record of the regression and the fix.
+
+**Free-tier constraint, honestly stated:** the binding limit turned out to
+be requests *per minute* (5 RPM), not the daily cap (~20/day, rarely the
+actual bottleneck). `eval/run_eval.py` paces itself -- sleeping between
+cases -- to stay under that ceiling rather than tripping it and burning
+retries into a wall.
+
+Run it:
+
+```bash
+GEMINI_API_KEY=<key> python eval/run_eval.py
+```
+
 ## Known limitations
 
 - Recommendations (e.g. captaincy judgments) weight recent `form` heavily. Since this is currently pre-season (July), `form` is `0` for every player, which skews those recommendations toward season-long totals by default rather than genuine recent form — worth re-checking once the season starts and form data populates.
@@ -344,3 +435,4 @@ All three responses above are live, so `demo_mode` is `false`; it flips to `true
 ## Future work
 
 - Weight season-long metrics more heavily when `form` data is sparse or zero (e.g. pre-season).
+- Expand the eval dataset beyond the current cases when on a higher-quota key.
